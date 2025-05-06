@@ -1,18 +1,35 @@
 import asyncio
+import logging
 from src.exchanges import fetch_prices
 from src.notifier import send_telegram_alert
 from src.database import log_spread
 from configs import EXCHANGES, SPREAD_THRESHOLD, EXCHANGE_FEES
 from utils.helpers import now_utc_str, format_usd
 
+# Cấu hình logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 async def run_bot(mode="test", balance=1000, exchanges=["binance", "kraken"], symbol="BTC/USDT"):
+    """
+    Chạy bot arbitrage để kiểm tra chênh lệch giá giữa các sàn
+    
+    Args:
+        mode (str): "live" để gửi cảnh báo thực, "test" chỉ ghi log
+        balance (float): Số tiền mô phỏng để tính lợi nhuận
+        exchanges (list): Danh sách các sàn giao dịch cần kiểm tra
+        symbol (str): Cặp tiền tệ để kiểm tra (ví dụ: "BTC/USDT")
+    """
     try:
         # Step 1: Fetch prices
         prices = await fetch_prices(exchanges, symbol)
 
         if len(prices) < 2:
-            print("⚠️ Không đủ sàn để so sánh.")
+            logger.warning("⚠️ Không đủ sàn để so sánh. Cần ít nhất 2 sàn.")
             return
 
         # Step 2: Find best buy/sell prices
@@ -41,7 +58,7 @@ async def run_bot(mode="test", balance=1000, exchanges=["binance", "kraken"], sy
             coin_amount = balance / effective_buy
             profit = (effective_sell - effective_buy) * coin_amount
 
-            # Log
+            # Log thông tin về cơ hội arbitrage
             log_spread(
                 symbol=symbol,
                 ex_buy=buy_ex,
@@ -52,7 +69,7 @@ async def run_bot(mode="test", balance=1000, exchanges=["binance", "kraken"], sy
                 mode=mode
             )
 
-            # Gửi Telegram
+            # Tạo nội dung thông báo
             message = (
                 f"🚨 [ARBITRAGE ALERT] {symbol}\n"
                 f"🟢 BUY  from {buy_ex.upper()} @ {format_usd(buy_price)} (+{buy_fee*100:.2f}% fee)\n"
@@ -61,10 +78,21 @@ async def run_bot(mode="test", balance=1000, exchanges=["binance", "kraken"], sy
                 f"💰 Simulated Profit on ${balance}: {format_usd(profit)}\n"
                 f"📅 {now_utc_str()} | Mode: {mode.upper()}"
             )
-            await send_telegram_alert(message)
+            
+            # Chỉ gửi cảnh báo nếu là mode live
+            if mode.lower() == "live":
+                logger.info(f"Đã phát hiện cơ hội arbitrage: {buy_ex} -> {sell_ex}, spread: {net_spread:.2f}%")
+                await send_telegram_alert(message)
+            else:
+                logger.info(f"[TEST MODE] Phát hiện cơ hội arbitrage nhưng không gửi cảnh báo")
+                logger.info(f"Nội dung thông báo:\n{message}")
 
         else:
-            print(f"Spread sau phí {net_spread:.2f}% < threshold {SPREAD_THRESHOLD}%, bỏ qua.")
+            logger.debug(f"Spread sau phí {net_spread:.2f}% < threshold {SPREAD_THRESHOLD}%, bỏ qua.")
 
     except Exception as e:
-        print(f"❌ Lỗi trong run_bot: {e}")
+        logger.error(f"❌ Lỗi trong run_bot: {e}", exc_info=True)
+        # Lỗi nghiêm trọng, thông báo rõ ràng
+        if mode.lower() == "live":
+            error_message = f"⚠️ Bot gặp lỗi: {str(e)}\nThời gian: {now_utc_str()}"
+            await send_telegram_alert(error_message)

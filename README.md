@@ -56,11 +56,11 @@ pip install -r requirements.txt
 Tạo một file `.env` trong thư mục gốc và thêm các giá trị sau:
 
 ```env
-BOT_TOKEN=your_bot_token
+TELEGRAM_TOKEN =your_bot_token
 CHAT_ID=your_chat_id
 ```
 
-* **`BOT_TOKEN`**: Token của bot Telegram.
+* **`TELEGRAM_TOKEN`**: Token của bot Telegram.
 * **`CHAT_ID`**: ID chat của bạn hoặc group chat để nhận thông báo.
 
 ### Bước 4: Chạy bot
