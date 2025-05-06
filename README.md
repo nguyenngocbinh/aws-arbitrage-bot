@@ -1,93 +1,120 @@
-# aws-arbitrage-bot
 
+# Crypto Arbitrage Bot
 
+## 📜 Giới thiệu
+Crypto Arbitrage Bot là một bot sử dụng chiến lược arbitrage để phát hiện các cơ hội chênh lệch giá giữa các sàn giao dịch crypto và gửi cảnh báo qua Telegram khi có cơ hội lớn.
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## 🔧 Cấu trúc thư mục
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/nguyenngocbinh/aws-arbitrage-bot.git
-git branch -M main
-git push -uf origin main
+
+aws-arbitrage-bot/
+│
+├── .env                    # Biến môi trường: API keys, chat ID
+├── configs.py              # Cấu hình chung: đường dẫn, pairs, sàn
+├── main.py                 # Điểm chạy chính (entry point)
+│
+├── bots/
+│   ├── __init__.py         # Để Python coi là module
+│   ├── arbitrage\bots.py   # Bot chính: fetch price, detect spread, notify, log
+│
+├── src/
+│   ├── __init__.py         # Để Python coi là module
+│   ├── exchanges.py        # Wrapper API ccxt và async price fetch
+│   ├── database.py         # Hàm SQLite: init, insert, query
+│   ├── notifier.py         # Gửi cảnh báo qua Telegram (hoặc email)
+│
+├── utils/
+│   ├── __init__.py         # Để Python coi là module
+│   └── helpers.py          # Hàm phụ trợ: format price, timestamp,...
+│
+└── requirements.txt        # Danh sách thư viện cần cài
+
+````
+
+## 🚀 Cài đặt
+
+### Bước 1: Clone repository
+
+Clone project về máy:
+
+```bash
+git clone https://github.com/nguyenngocbinh/aws-arbitrage-bot.git
+cd aws-arbitrage-bot
+````
+
+### Bước 2: Cài đặt các thư viện
+
+Cài đặt các thư viện cần thiết:
+
+```bash
+pip install -r requirements.txt
 ```
 
-## Integrate with your tools
+### Bước 3: Cấu hình
 
-- [ ] [Set up project integrations](https://gitlab.com/nguyenngocbinh/aws-arbitrage-bot/-/settings/integrations)
+Tạo một file `.env` trong thư mục gốc và thêm các giá trị sau:
 
-## Collaborate with your team
+```env
+BOT_TOKEN=your_bot_token
+CHAT_ID=your_chat_id
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+* **`BOT_TOKEN`**: Token của bot Telegram.
+* **`CHAT_ID`**: ID chat của bạn hoặc group chat để nhận thông báo.
 
-## Test and Deploy
+### Bước 4: Chạy bot
 
-Use the built-in continuous integration in GitLab.
+Chạy bot với lệnh sau:
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```bash
+python main.py --mode live --balance 1000 --exchanges binance kraken --symbol BTC/USDT
+```
 
-***
+Hoặc nếu chỉ muốn chạy ở chế độ kiểm tra:
 
-# Editing this README
+```bash
+python main.py --mode test --balance 1000 --exchanges binance kraken
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## 📈 Tính năng
 
-## Suggestions for a good README
+1. **Phát hiện chênh lệch giá**: Bot sẽ kiểm tra giá của một cặp coin (ví dụ: BTC/USDT) trên nhiều sàn giao dịch và tính toán chênh lệch (spread).
+2. **Gửi cảnh báo**: Nếu chênh lệch giá vượt qua ngưỡng được cấu hình, bot sẽ gửi cảnh báo qua Telegram.
+3. **Ghi log vào SQLite**: Các cơ hội arbitrage sẽ được lưu vào cơ sở dữ liệu SQLite để truy xuất và phân tích sau này.
+4. **Hỗ trợ nhiều sàn**: Dễ dàng cấu hình thêm các sàn giao dịch và cặp giao dịch trong file `configs.py`.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## 🔧 Cấu trúc mã nguồn
 
-## Name
-Choose a self-explaining name for your project.
+### **`bots/arbitrage_bot.py`**:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+* Đây là nơi xử lý chính của bot. Nó lấy giá từ các sàn giao dịch, tính toán chênh lệch và gửi cảnh báo.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### **`src/exchanges.py`**:
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+* Wrapper cho các API của các sàn giao dịch sử dụng thư viện `ccxt`. Bot sử dụng `asyncio` để lấy giá bất đồng bộ từ các sàn.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### **`src/database.py`**:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+* Chứa các hàm để kết nối và ghi log vào cơ sở dữ liệu SQLite.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### **`src/notifier.py`**:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+* Gửi cảnh báo qua Telegram khi phát hiện cơ hội arbitrage.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### **`utils/helpers.py`**:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+* Các hàm phụ trợ như `format_usd` (định dạng tiền tệ) và `now_utc_str` (lấy thời gian UTC hiện tại).
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## ⚙️ Cấu hình và mở rộng
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+* **Thêm sàn giao dịch**: Bạn có thể dễ dàng thêm các sàn giao dịch mới trong file `src/exchanges.py` và cấu hình trong `configs.py`.
+* **Thay đổi ngưỡng cảnh báo**: Điều chỉnh ngưỡng chênh lệch giá trong file `.env` (biến `THRESHOLD`).
 
-## License
-For open source projects, say how it is licensed.
+## 📜 License
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Crypto Arbitrage Bot là phần mềm mã nguồn mở, được phát hành dưới giấy phép MIT. Bạn có thể tự do sử dụng và chỉnh sửa mã nguồn.
+
+## 🤝 Liên hệ
+
+Nếu bạn gặp phải bất kỳ vấn đề nào, đừng ngần ngại mở một **issue** hoặc liên hệ qua email: `youremail@example.com`.
