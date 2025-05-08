@@ -25,6 +25,11 @@ async def run_bot(mode="test", balance=1000, exchanges=["binance", "kraken"], sy
         symbol (str): Cặp tiền tệ để kiểm tra (ví dụ: "BTC/USDT")
     """
     try:
+        # Xác thực định dạng symbol
+        if '/' not in symbol:
+            logger.error(f"❌ Định dạng symbol không hợp lệ: {symbol}. Định dạng mong đợi: BTC/USDT")
+            return
+            
         # Step 1: Fetch prices
         prices = await fetch_prices(exchanges, symbol)
 

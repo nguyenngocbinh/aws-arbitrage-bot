@@ -25,25 +25,28 @@ def init_db():
 
 def log_spread(symbol, ex_buy, price_buy, ex_sell, price_sell, spread, mode):
     """Ghi log chênh lệch giá vào bảng spreads"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO spreads (
-            timestamp, symbol, exchange_buy, price_buy, 
-            exchange_sell, price_sell, spread, mode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        now_utc_str(),
-        symbol,
-        ex_buy,
-        price_buy,
-        ex_sell,
-        price_sell,
-        spread,
-        mode
-    ))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO spreads (
+                timestamp, symbol, exchange_buy, price_buy, 
+                exchange_sell, price_sell, spread, mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            now_utc_str(),
+            symbol,
+            ex_buy,
+            price_buy,
+            ex_sell,
+            price_sell,
+            spread,
+            mode
+        ))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        logger.error(f"Lỗi cơ sở dữ liệu trong log_spread: {e}")
 
 def get_recent_logs(limit=10):
     """Truy xuất các bản ghi gần nhất để debug"""

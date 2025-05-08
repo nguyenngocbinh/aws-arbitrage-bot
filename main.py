@@ -71,6 +71,7 @@ async def main():
     # Chạy bot liên tục với xử lý lỗi
     try:
         run_count = 0
+        consecutive_errors = 0
         while True:
             try:
                 run_count += 1
@@ -84,14 +85,21 @@ async def main():
                     symbol=args.symbol
                 )
                 
+                # Đặt lại bộ đếm lỗi khi thành công
+                consecutive_errors = 0
+                
                 # Chờ đến lần kiểm tra tiếp theo
                 logger.debug(f"🕒 Đang chờ {args.interval} giây cho lần kiểm tra tiếp theo...")
                 await asyncio.sleep(args.interval)
                 
             except Exception as e:
+                consecutive_errors += 1
+                # Tăng thời gian chờ theo cấp số nhân nhưng giới hạn tối đa
+                wait_time = min(10 * (2 ** consecutive_errors), 300)  # Giới hạn ở 5 phút
+                
                 logger.error(f"❌ Lỗi khi chạy bot: {e}", exc_info=True)
-                logger.info(f"⏳ Đang chờ 10 giây trước khi thử lại...")
-                await asyncio.sleep(10)  # Chờ lâu hơn khi có lỗi
+                logger.info(f"⏳ Đang chờ {wait_time} giây trước khi thử lại...")
+                await asyncio.sleep(wait_time)
     
     except KeyboardInterrupt:
         logger.info("\nBot đã dừng lại do người dùng nhấn Ctrl+C.")
