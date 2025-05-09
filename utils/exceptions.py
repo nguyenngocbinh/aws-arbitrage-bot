@@ -64,3 +64,20 @@ class NotificationError(ArbitrageError):
         self.service = service
         self.message = message
         super().__init__(f"Lỗi khi gửi thông báo qua {service}: {message}")
+
+
+class DeltaNeutralError(ArbitrageError):
+    """Lỗi liên quan đến chiến lược Delta-Neutral."""
+    
+    def __init__(self, message):
+        self.message = message
+        super().__init__(f"Lỗi Delta-Neutral: {message}")
+
+
+class FuturesError(ArbitrageError):
+    """Lỗi liên quan đến giao dịch futures."""
+    
+    def __init__(self, exchange, message):
+        self.exchange = exchange
+        self.message = message
+        super().__init__(f"Lỗi Futures trên {exchange}: {message}")

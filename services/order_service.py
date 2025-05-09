@@ -4,8 +4,9 @@ Service quản lý các hoạt động đặt lệnh giao dịch.
 import time
 import asyncio
 from utils.logger import log_info, log_error, log_warning
-from utils.exceptions import OrderError, OrderFillTimeoutError
+from utils.exceptions import OrderError, OrderFillTimeoutError, FuturesError
 from config import FIRST_ORDERS_FILL_TIMEOUT
+from utils.helpers import extract_base_asset
 
 
 class OrderService:
@@ -46,10 +47,168 @@ class OrderService:
         for exchange_id in exchanges:
             try:
                 self.exchange_service.create_limit_buy_order(exchange_id, symbol, amount_per_exchange, price)
-                log_info(f"Đặt lệnh giới hạn mua {round(amount_per_exchange, 3)} {symbol[:len(symbol)-5]} ở giá {price} gửi đến {exchange_id}.")
+                log_info(f"Đã đóng lệnh short trên {exchange_id} cho {amount} {extract_base_asset(symbol)}")
+            
+            return order
+        except Exception as e:
+            raise FuturesError(exchange_id, f"Không thể đóng lệnh short: {str(e)}")
+    
+    def wait_for_futures_order_fill(self, exchange_id, symbol, timeout=120):
+        """
+        Đợi cho đến khi lệnh Futures được điền.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            symbol (str): Ký hiệu của cặp giao dịch
+            timeout (int): Thời gian chờ tối đa (giây)
+            
+        Returns:
+            bool: True nếu lệnh đã được điền, ngược lại False
+            
+        Raises:
+            OrderFillTimeoutError: Nếu lệnh không được điền trong thời gian quy định
+        """
+        try:
+            # Đảm bảo đây là một symbol Futures hợp lệ
+            if not symbol.endswith(':USDT'):
+                symbol = f"{extract_base_asset(symbol)}:USDT"
+            
+            start_time = time.time()
+            
+            while time.time() - start_time < timeout:
+                # Kiểm tra các lệnh đang mở
+                open_orders = self.exchange_service.fetch_open_orders(exchange_id, symbol)
+                
+                if not open_orders:
+                    # Không có lệnh đang mở, tức là lệnh đã được điền
+                    log_info(f"Lệnh Futures trên {exchange_id} đã được điền.")
+                    return True
+                
+                # Dừng 1 giây để giảm số lượng request
+                time.sleep(1)
+            
+            # Nếu vẫn còn lệnh đang mở sau khi hết thời gian chờ
+            open_orders = self.exchange_service.fetch_open_orders(exchange_id, symbol)
+            
+            if open_orders:
+                # Hủy lệnh đầu tiên
+                order_id = open_orders[0]['id']
+                self.exchange_service.cancel_order(exchange_id, order_id, symbol)
+                
+                raise OrderFillTimeoutError(exchange_id, order_id, timeout)
+            
+            return True
+            
+        except Exception as e:
+            if isinstance(e, OrderFillTimeoutError):
+                raise
+            
+            raise FuturesError(exchange_id, f"Lỗi khi đợi lệnh futures được điền: {str(e)}")
+            
+    def set_futures_leverage(self, exchange_id, symbol, leverage):
+        """
+        Thiết lập đòn bẩy cho một cặp giao dịch trên thị trường Futures.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            symbol (str): Ký hiệu của cặp giao dịch
+            leverage (int): Đòn bẩy
+            
+        Returns:
+            dict: Thông tin về việc thiết lập đòn bẩy
+            
+        Raises:
+            FuturesError: Nếu có lỗi khi thiết lập đòn bẩy
+        """
+        try:
+            # Đảm bảo đây là một symbol Futures hợp lệ
+            if not symbol.endswith(':USDT'):
+                symbol = f"{extract_base_asset(symbol)}:USDT"
+            
+            exchange = self.exchange_service.get_exchange(exchange_id)
+            
+            if hasattr(exchange, 'set_leverage'):
+                result = exchange.set_leverage(leverage, symbol)
+                log_info(f"Đã thiết lập đòn bẩy {leverage}x cho {symbol} trên {exchange_id}")
+                return result
+            else:
+                log_warning(f"Sàn {exchange_id} không hỗ trợ thiết lập đòn bẩy qua API")
+                return None
+        except Exception as e:
+            raise FuturesError(exchange_id, f"Không thể thiết lập đòn bẩy: {str(e)}")
+    
+    def check_futures_position(self, exchange_id, symbol):
+        """
+        Kiểm tra vị thế Futures hiện tại.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            symbol (str): Ký hiệu của cặp giao dịch
+            
+        Returns:
+            dict: Thông tin về vị thế
+            
+        Raises:
+            FuturesError: Nếu có lỗi khi kiểm tra vị thế
+        """
+        try:
+            # Đảm bảo đây là một symbol Futures hợp lệ
+            if not symbol.endswith(':USDT'):
+                symbol = f"{extract_base_asset(symbol)}:USDT"
+            
+            exchange = self.exchange_service.get_exchange(exchange_id)
+            
+            if hasattr(exchange, 'fetch_positions'):
+                positions = exchange.fetch_positions([symbol])
+                
+                if positions and len(positions) > 0:
+                    for position in positions:
+                        if position['symbol'] == symbol:
+                            log_info(f"Vị thế Futures {symbol} trên {exchange_id}: {position['side']} {position['contracts']}")
+                            return position
+                
+                log_info(f"Không tìm thấy vị thế Futures {symbol} trên {exchange_id}")
+                return None
+            else:
+                log_warning(f"Sàn {exchange_id} không hỗ trợ kiểm tra vị thế qua API")
+                return None
+        except Exception as e:
+            raise FuturesError(exchange_id, f"Không thể kiểm tra vị thế: {str(e)}")
+            
+    def get_futures_balance(self, exchange_id, asset='USDT'):
+        """
+        Lấy số dư trên tài khoản Futures.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            asset (str): Ký hiệu của tài sản (mặc định là USDT)
+            
+        Returns:
+            float: Số dư của tài sản
+            
+        Raises:
+            FuturesError: Nếu có lỗi khi lấy số dư
+        """
+        try:
+            exchange = self.exchange_service.get_exchange(exchange_id)
+            
+            if hasattr(exchange, 'fetch_balance'):
+                balance = exchange.fetch_balance()
+                
+                if asset in balance['free']:
+                    log_info(f"Số dư Futures {asset} trên {exchange_id}: {balance['free'][asset]}")
+                    return balance['free'][asset]
+                
+                log_info(f"Không tìm thấy số dư {asset} trên {exchange_id}")
+                return 0
+            else:
+                log_warning(f"Sàn {exchange_id} không hỗ trợ kiểm tra số dư qua API")
+                return 0
+        except Exception as e:
+            raise FuturesError(exchange_id, f"Không thể lấy số dư: {str(e)}")(f"Đặt lệnh giới hạn mua {round(amount_per_exchange, 3)} {extract_base_asset(symbol)} ở giá {price} gửi đến {exchange_id}.")
                 
                 if notification_service:
-                    notification_service.send_message(f"Đặt lệnh giới hạn mua {round(amount_per_exchange, 3)} {symbol[:len(symbol)-5]} ở giá {price} gửi đến {exchange_id}.")
+                    notification_service.send_message(f"Đặt lệnh giới hạn mua {round(amount_per_exchange, 3)} {extract_base_asset(symbol)} ở giá {price} gửi đến {exchange_id}.")
             except Exception as e:
                 raise OrderError(exchange_id, "limit buy", str(e))
         
@@ -132,17 +291,17 @@ class OrderService:
         try:
             # Đặt lệnh bán giới hạn trên sàn có giá cao
             self.exchange_service.create_limit_sell_order(max_bid_ex, symbol, amount, max_bid_price)
-            log_info(f"Lệnh bán giới hạn đã gửi đến {max_bid_ex} cho {amount} {symbol[:len(symbol)-5]} ở giá {max_bid_price}, đợi 3 phút để điền.")
+            log_info(f"Lệnh bán giới hạn đã gửi đến {max_bid_ex} cho {amount} {extract_base_asset(symbol)} ở giá {max_bid_price}, đợi 3 phút để điền.")
             
             # Đặt lệnh mua giới hạn trên sàn có giá thấp
             self.exchange_service.create_limit_buy_order(min_ask_ex, symbol, amount, min_ask_price)
-            log_info(f"Lệnh mua giới hạn đã gửi đến {min_ask_ex} cho {amount} {symbol[:len(symbol)-5]} ở giá {min_ask_price}, đợi 3 phút để điền.")
+            log_info(f"Lệnh mua giới hạn đã gửi đến {min_ask_ex} cho {amount} {extract_base_asset(symbol)} ở giá {min_ask_price}, đợi 3 phút để điền.")
             
             if notification_service:
                 notification_service.send_message(
                     f"Đặt lệnh chênh lệch giá:\n"
-                    f"- Bán giới hạn: {max_bid_ex} {amount} {symbol[:len(symbol)-5]} @ {max_bid_price}\n"
-                    f"- Mua giới hạn: {min_ask_ex} {amount} {symbol[:len(symbol)-5]} @ {min_ask_price}"
+                    f"- Bán giới hạn: {max_bid_ex} {amount} {extract_base_asset(symbol)} @ {max_bid_price}\n"
+                    f"- Mua giới hạn: {min_ask_ex} {amount} {extract_base_asset(symbol)} @ {min_ask_price}"
                 )
             
             # Thiết lập thời gian chờ tối đa cho việc điền lệnh
@@ -194,7 +353,7 @@ class OrderService:
                 if last_orders:
                     amount_filled = last_orders[-1]["filled"]
                     self.exchange_service.create_market_buy_order(max_bid_ex, symbol, amount_filled)
-                    log_info(f"Đã tạo lệnh mua thị trường trên {max_bid_ex} cho {amount_filled} {symbol[:len(symbol)-5]}.")
+                    log_info(f"Đã tạo lệnh mua thị trường trên {max_bid_ex} cho {amount_filled} {extract_base_asset(symbol)}.")
                 
             elif sell_orders and not buy_orders:
                 # Lệnh bán chưa điền nhưng lệnh mua đã điền
@@ -259,20 +418,21 @@ class OrderService:
             dict: Thông tin lệnh
             
         Raises:
-            OrderError: Nếu có lỗi khi đặt lệnh
+            FuturesError: Nếu có lỗi khi đặt lệnh
         """
         try:
             # Đảm bảo đây là một symbol Futures hợp lệ
             if not symbol.endswith(':USDT'):
-                symbol = f"{symbol.split('/')[0]}:USDT"
+                symbol = f"{extract_base_asset(symbol)}:USDT"
             
             # Đặt lệnh bán thị trường với đòn bẩy
-            order = self.exchange_service.create_market_sell_order(exchange_id, symbol, amount, {'leverage': leverage})
-            log_info(f"Đã đặt lệnh short trên {exchange_id} cho {amount} {symbol} với đòn bẩy {leverage}x")
+            params = {'leverage': leverage}
+            order = self.exchange_service.create_futures_order(exchange_id, symbol, 'market', 'sell', amount, params)
+            log_info(f"Đã đặt lệnh short trên {exchange_id} cho {amount} {extract_base_asset(symbol)} với đòn bẩy {leverage}x")
             
             return order
         except Exception as e:
-            raise OrderError(exchange_id, "futures short", str(e))
+            raise FuturesError(exchange_id, f"Không thể đặt lệnh short: {str(e)}")
     
     def close_futures_short_order(self, exchange_id, symbol, amount, leverage=1):
         """
@@ -288,87 +448,14 @@ class OrderService:
             dict: Thông tin lệnh
             
         Raises:
-            OrderError: Nếu có lỗi khi đặt lệnh
+            FuturesError: Nếu có lỗi khi đặt lệnh
         """
         try:
             # Đảm bảo đây là một symbol Futures hợp lệ
             if not symbol.endswith(':USDT'):
-                symbol = f"{symbol.split('/')[0]}:USDT"
+                symbol = f"{extract_base_asset(symbol)}:USDT"
             
             # Đặt lệnh mua thị trường để đóng vị thế short
-            order = self.exchange_service.create_market_buy_order(exchange_id, symbol, amount, {'leverage': leverage})
-            log_info(f"Đã đóng lệnh short trên {exchange_id} cho {amount} {symbol}")
-            
-            return order
-        except Exception as e:
-            raise OrderError(exchange_id, "close futures short", str(e))
-    
-    def wait_for_futures_order_fill(self, exchange_id, symbol, timeout=120):
-        """
-        Đợi cho đến khi lệnh Futures được điền.
-        
-        Args:
-            exchange_id (str): ID của sàn giao dịch
-            symbol (str): Ký hiệu của cặp giao dịch
-            timeout (int): Thời gian chờ tối đa (giây)
-            
-        Returns:
-            bool: True nếu lệnh đã được điền, ngược lại False
-            
-        Raises:
-            OrderFillTimeoutError: Nếu lệnh không được điền trong thời gian quy định
-        """
-        try:
-            # Đảm bảo đây là một symbol Futures hợp lệ
-            if not symbol.endswith(':USDT'):
-                symbol = f"{symbol.split('/')[0]}:USDT"
-            
-            start_time = time.time()
-            
-            while time.time() - start_time < timeout:
-                # Kiểm tra các lệnh đang mở
-                open_orders = self.exchange_service.fetch_open_orders(exchange_id, symbol)
-                
-                if not open_orders:
-                    # Không có lệnh đang mở, tức là lệnh đã được điền
-                    log_info(f"Lệnh Futures trên {exchange_id} đã được điền.")
-                    return True
-                
-                # Dừng 1 giây để giảm số lượng request
-                time.sleep(1)
-            
-            # Nếu vẫn còn lệnh đang mở sau khi hết thời gian chờ
-            open_orders = self.exchange_service.fetch_open_orders(exchange_id, symbol)
-            
-            if open_orders:
-                # Hủy lệnh đầu tiên
-                order_id = open_orders[0]['id']
-                self.exchange_service.cancel_order(exchange_id, order_id, symbol)
-                
-                raise OrderFillTimeoutError(exchange_id, order_id, timeout)
-            
-            return True
-            
-        except Exception as e:
-            if isinstance(e, OrderFillTimeoutError):
-                raise
-            
-            raise OrderError(exchange_id, "wait for futures order", str(e))
-d_ex, sell_orders[0]['id'], symbol)
-                log_info(f"Đã hủy lệnh bán trên {max_bid_ex}.")
-                
-                # Tạo lệnh bán thị trường để cân bằng
-                last_orders = self.exchange_service.fetch_closed_orders(min_ask_ex, symbol)
-                
-                if last_orders:
-                    amount_filled = last_orders[-1]["filled"]
-                    self.exchange_service.create_market_sell_order(min_ask_ex, symbol, amount_filled)
-                    log_info(f"Lệnh bán thị trường đã được điền trên {min_ask_ex}. Có thể có tổn thất nhỏ.")
-            
-            elif buy_orders and sell_orders:
-                # Cả hai lệnh đều chưa điền
-                log_warning("2 lệnh không được điền trong 120 giây. Đang hủy...")
-                
-                # Hủy cả hai lệnh
-                self.exchange_service.cancel_order(min_ask_ex, buy_orders[0]['id'], symbol)
-                self.exchange_service.cancel_order(max_bid_ex
+            params = {'leverage': leverage}
+            order = self.exchange_service.create_futures_order(exchange_id, symbol, 'market', 'buy', amount, params)
+            log_info
