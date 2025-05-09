@@ -4,7 +4,7 @@ Service quản lý việc gửi thông báo qua Telegram.
 import os
 import requests
 from dotenv import load_dotenv
-from utils.helpers import format_message
+from utils.helpers import format_message, extract_base_asset
 from utils.exceptions import NotificationError
 
 # Tải biến môi trường
@@ -113,7 +113,7 @@ class NotificationService:
         if not self.enabled:
             return False
         
-        base_asset = crypto_pair.split('/')[0] if '/' in crypto_pair else crypto_pair.split(':')[0]
+        base_asset = extract_base_asset(crypto_pair)
         
         message = (
             f"[Trade #{trade_number}]\n\n"

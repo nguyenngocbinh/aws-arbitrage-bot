@@ -2,6 +2,7 @@
 Các hàm tiện ích dùng chung cho toàn bộ ứng dụng.
 """
 import time
+from datetime import datetime
 from colorama import Style
 
 
@@ -71,8 +72,74 @@ def update_balance_file(file_path, profit_pct, original_balance):
 
 def extract_base_asset(symbol):
     """Trích xuất tên tài sản cơ sở từ một cặp giao dịch."""
-    if symbol.endswith('/USDT'):
-        return symbol[:-5]  # Loại bỏ '/USDT'
-    if symbol.endswith(':USDT'):
-        return symbol[:-5]  # Loại bỏ ':USDT'
+    if '/' in symbol:
+        return symbol.split('/')[0]
+    elif ':' in symbol:
+        return symbol.split(':')[0]
     return symbol
+
+
+def get_precision_min(orderbook, exchange_id):
+    """
+    Xác định độ chính xác tối thiểu cho giá dựa trên sách lệnh.
+    
+    Args:
+        orderbook (dict): Dữ liệu sách lệnh
+        exchange_id (str): ID của sàn giao dịch
+        
+    Returns:
+        float: Giá trị độ chính xác tối thiểu
+    """
+    try:
+        # Tính toán độ chính xác dựa trên sự chênh lệch giữa các giá
+        bids = orderbook['bids']
+        asks = orderbook['asks']
+        
+        price_diffs = []
+        
+        # Lấy độ chênh lệch giữa các giá mua
+        for i in range(1, min(5, len(bids))):
+            diff = abs(bids[i][0] - bids[i-1][0])
+            if diff > 0:
+                price_diffs.append(diff)
+        
+        # Lấy độ chênh lệch giữa các giá bán
+        for i in range(1, min(5, len(asks))):
+            diff = abs(asks[i][0] - asks[i-1][0])
+            if diff > 0:
+                price_diffs.append(diff)
+        
+        if price_diffs:
+            # Lấy giá trị tối thiểu
+            min_diff = min(price_diffs)
+            return min_diff
+        
+        # Nếu không thể tính toán, trả về giá trị mặc định theo sàn
+        default_precisions = {
+            'binance': 0.01,
+            'kucoin': 0.01,
+            'okx': 0.01,
+            'bybit': 0.01,
+            'kucoinfutures': 0.1,
+        }
+        
+        return default_precisions.get(exchange_id, 0.01)
+    
+    except Exception as e:
+        # Nếu có lỗi, trả về giá trị mặc định
+        print(f"Lỗi khi tính toán độ chính xác: {e}")
+        return 0.01
+
+
+def printandtelegram(message, notification_service=None):
+    """
+    In thông báo ra màn hình và gửi qua Telegram nếu có thể.
+    
+    Args:
+        message (str): Thông báo cần hiển thị và gửi
+        notification_service (NotificationService, optional): Dịch vụ thông báo
+    """
+    print(message)
+    
+    if notification_service:
+        notification_service.send_message(message)
