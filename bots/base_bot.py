@@ -5,6 +5,8 @@ import time
 import asyncio
 import signal
 import sys
+from asyncio import gather
+import ccxt.pro
 from colorama import Fore, Style
 
 from utils.logger import log_info, log_error, log_warning, log_profit, log_opportunity
@@ -147,6 +149,80 @@ class BaseBot:
                 # Nếu người dùng nhấn Ctrl+C một lần nữa, thoát ngay lập tức
                 sys.exit(1)
     
+    async def _start_orderbook_loop(self):
+        """
+        Bắt đầu vòng lặp theo dõi sách lệnh trên tất cả các sàn.
+        
+        Returns:
+            float: Tổng lợi nhuận (phần trăm)
+        """
+        try:
+            # Tạo các vòng lặp cho từng sàn giao dịch
+            exchange_loops = []
+            
+            for exchange_id in self.exchanges:
+                exchange_loops.append(self._exchange_loop(exchange_id))
+                
+            # Chạy tất cả các vòng lặp
+            await gather(*exchange_loops)
+            
+            return self.total_absolute_profit_pct
+            
+        except Exception as e:
+            log_error(f"Lỗi trong vòng lặp theo dõi sách lệnh: {str(e)}")
+            raise
+    
+    async def _exchange_loop(self, exchange_id):
+        """
+        Vòng lặp theo dõi sách lệnh cho một sàn giao dịch cụ thể.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            
+        Returns:
+            None
+        """
+        pro_exchange = None
+        try:
+            # Tạo đối tượng sàn giao dịch ccxt.pro
+            log_info(f"Bắt đầu theo dõi sách lệnh trên sàn {exchange_id}")
+            pro_exchange = await self.exchange_service.get_pro_exchange(exchange_id)
+            
+            # Theo dõi sách lệnh cho đến khi hết thời gian
+            while time.time() <= self.timeout:
+                try:
+                    # Lấy thông tin sách lệnh mới nhất
+                    orderbook = await pro_exchange.watch_order_book(self.symbol)
+                    
+                    # Xử lý dữ liệu sách lệnh
+                    await self.process_orderbook(exchange_id, orderbook)
+                    
+                except ccxt.pro.NetworkError as network_error:
+                    log_warning(f"Lỗi kết nối với {exchange_id}: {str(network_error)}")
+                    await asyncio.sleep(1)  # Đợi một chút trước khi thử lại
+                    
+                except Exception as loop_error:
+                    log_error(f"Lỗi trong vòng lặp {exchange_id}: {str(loop_error)}")
+                    await asyncio.sleep(1)  # Đợi một chút trước khi thử lại
+                
+                # Đợi một chút để giảm tải cho CPU
+                await asyncio.sleep(0.1)
+            
+            # Đóng kết nối với sàn giao dịch
+            log_info(f"Kết thúc theo dõi sách lệnh trên sàn {exchange_id}")
+            if pro_exchange:
+                await pro_exchange.close()
+                
+        except Exception as e:
+            log_error(f"Lỗi khi khởi tạo vòng lặp cho {exchange_id}: {str(e)}")
+            
+            # Đảm bảo kết nối được đóng đúng cách
+            if pro_exchange:
+                try:
+                    await pro_exchange.close()
+                except Exception:
+                    pass
+    
     async def process_orderbook(self, exchange_id, orderbook):
         """
         Xử lý dữ liệu sách lệnh nhận được từ sàn giao dịch.
@@ -181,7 +257,6 @@ class BaseBot:
         self.max_bid_price = self.bid_prices[max_bid_ex]
         
         # Tính toán lợi nhuận tiềm năng
-        total_crypto_amount = sum(self.crypto.values())
         total_usd_amount = sum(self.usd.values())
         
         # Tính lợi nhuận trước phí
@@ -366,7 +441,7 @@ class BaseBot:
         total_crypto = sum(self.crypto.values())
         
         # Cập nhật số lượng crypto mỗi giao dịch (lấy trung bình)
-        self.crypto_per_transaction = total_crypto / len(self.exchanges)
+        self.crypto_per_transaction = total_crypto / len(self.exchanges) * 0.99  # Giảm 1% để đảm bảo đủ số dư
     
     def _display_trade_report(self, min_ask_ex, max_bid_ex, profit_pct, profit_usd, fee_usd, fee_crypto):
         """

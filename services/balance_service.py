@@ -3,7 +3,7 @@ Service quản lý số dư trên các sàn giao dịch.
 """
 import os
 import time
-from utils.logger import log_info, log_error
+from utils.logger import log_info, log_error, log_warning
 from utils.exceptions import InsufficientBalanceError
 from utils.helpers import read_file_content, update_balance_file, extract_base_asset
 from config import START_BALANCE_FILE, BALANCE_FILE
@@ -44,6 +44,9 @@ class BalanceService:
         """
         amount_per_exchange = total_amount / len(exchanges)
         insufficient = False
+        insufficient_exchange = None
+        insufficient_amount = 0
+        available_amount = 0
         
         for exchange_id in exchanges:
             balance = self.get_balance(exchange_id, 'USDT')
@@ -60,11 +63,14 @@ class BalanceService:
                     notification_service.send_message(message)
                 
                 insufficient = True
+                insufficient_exchange = exchange_id
+                insufficient_amount = amount_per_exchange
+                available_amount = balance
             else:
                 log_info(f"Số dư trên {exchange_id} đã đủ")
         
         if insufficient:
-            raise InsufficientBalanceError(exchanges[0], 'USDT', amount_per_exchange, balance)
+            raise InsufficientBalanceError(insufficient_exchange, 'USDT', insufficient_amount, available_amount)
         
         return True
     
@@ -219,8 +225,7 @@ class BalanceService:
             dict: Thông tin về giao dịch chuyển
         """
         try:
-            exchange = self.exchange_service.get_exchange(exchange_id)
-            result = exchange.transfer(asset, amount, from_account, to_account)
+            result = self.exchange_service.transfer_between_accounts(exchange_id, asset, amount, from_account, to_account)
             log_info(f"Đã chuyển {amount} {asset} từ {from_account} sang {to_account} trên {exchange_id}")
             return result
         except Exception as e:
