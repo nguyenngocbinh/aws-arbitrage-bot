@@ -33,6 +33,12 @@ EXCHANGE_FEES = {
     # Có thể thêm nhiều sàn khác nếu cần
 }
 
+# Cấu hình Delta-Neutral
+DEFAULT_FUTURES_EXCHANGE = 'kucoinfutures'  # Sàn futures mặc định
+DEFAULT_LEVERAGE = 1  # Đòn bẩy mặc định
+SHORT_AMOUNT_RATIO = 1/3  # Tỷ lệ số tiền để mở vị thế short (1/3 tổng số tiền)
+MIN_FUTURES_QUANTITY = 1  # Số lượng tối thiểu cho giao dịch futures
+
 # Chế độ bot
 BOT_MODES = ['fake-money', 'classic', 'delta-neutral']
 

@@ -7,9 +7,9 @@ import ccxt.pro
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-from utils.logger import log_info, log_error
-from utils.exceptions import ExchangeError, InsufficientBalanceError
-from utils.helpers import calculate_average
+from utils.logger import log_info, log_error, log_debug
+from utils.exceptions import ExchangeError, InsufficientBalanceError, FuturesError
+from utils.helpers import calculate_average, extract_base_asset
 
 # Tải biến môi trường
 load_dotenv()
@@ -32,7 +32,8 @@ class ExchangeService:
         if os.getenv('BINANCE_API_KEY') and os.getenv('BINANCE_SECRET'):
             self.exchanges['binance'] = {
                 'apiKey': os.getenv('BINANCE_API_KEY'),
-                'secret': os.getenv('BINANCE_SECRET')
+                'secret': os.getenv('BINANCE_SECRET'),
+                'options': {'createMarketBuyOrderRequiresPrice': False}
             }
         
         # Khởi tạo KuCoin
@@ -40,7 +41,8 @@ class ExchangeService:
             self.exchanges['kucoin'] = {
                 'apiKey': os.getenv('KUCOIN_API_KEY'),
                 'secret': os.getenv('KUCOIN_SECRET'),
-                'password': os.getenv('KUCOIN_PASSWORD')
+                'password': os.getenv('KUCOIN_PASSWORD'),
+                'options': {'createMarketBuyOrderRequiresPrice': False}
             }
             self.exchanges['kucoinfutures'] = {
                 'apiKey': os.getenv('KUCOIN_API_KEY'),
@@ -53,7 +55,10 @@ class ExchangeService:
             self.exchanges['bybit'] = {
                 'apiKey': os.getenv('BYBIT_API_KEY'),
                 'secret': os.getenv('BYBIT_SECRET'),
-                'options': {'defaultType': 'spot'}
+                'options': {
+                    'defaultType': 'spot',
+                    'createMarketBuyOrderRequiresPrice': False
+                }
             }
         
         # Khởi tạo OKX
@@ -61,7 +66,8 @@ class ExchangeService:
             self.exchanges['okx'] = {
                 'apiKey': os.getenv('OKX_API_KEY'),
                 'secret': os.getenv('OKX_SECRET'),
-                'password': os.getenv('OKX_PASSWORD')
+                'password': os.getenv('OKX_PASSWORD'),
+                'options': {'createMarketBuyOrderRequiresPrice': False}
             }
     
     def get_exchange(self, exchange_id):
@@ -132,15 +138,12 @@ class ExchangeService:
         
         try:
             # Làm sạch symbol nếu nó có dạng BTC/USDT hoặc BTC:USDT
-            if symbol.endswith('/USDT'):
-                symbol = symbol[:-5]
-            elif symbol.endswith(':USDT'):
-                symbol = symbol[:-5]
+            clean_symbol = extract_base_asset(symbol) if symbol != 'USDT' else 'USDT'
             
             balance = exchange.fetch_balance()
             
-            if symbol in balance['free'] and balance['free'][symbol] != 0:
-                return balance['free'][symbol]
+            if clean_symbol in balance['free'] and balance['free'][clean_symbol] != 0:
+                return balance['free'][clean_symbol]
             return 0
         except Exception as e:
             raise ExchangeError(exchange_id, f"Không thể lấy số dư của {symbol}: {str(e)}")
@@ -212,7 +215,7 @@ class ExchangeService:
         except Exception as e:
             raise ExchangeError(exchange_id, f"Không thể tạo lệnh bán giới hạn cho {symbol}: {str(e)}")
     
-    def create_market_buy_order(self, exchange_id, symbol, amount):
+    def create_market_buy_order(self, exchange_id, symbol, amount, params=None):
         """
         Tạo lệnh mua thị trường.
         
@@ -220,6 +223,7 @@ class ExchangeService:
             exchange_id (str): ID của sàn giao dịch
             symbol (str): Ký hiệu của cặp giao dịch
             amount (float): Số lượng cần mua
+            params (dict, optional): Tham số bổ sung
         
         Returns:
             dict: Thông tin lệnh đã tạo
@@ -228,13 +232,14 @@ class ExchangeService:
             ExchangeError: Nếu có lỗi khi tạo lệnh
         """
         exchange = self.get_exchange(exchange_id)
+        params = params or {}
         
         try:
-            return exchange.create_market_buy_order(symbol, amount)
+            return exchange.create_market_buy_order(symbol, amount, params)
         except Exception as e:
             raise ExchangeError(exchange_id, f"Không thể tạo lệnh mua thị trường cho {symbol}: {str(e)}")
     
-    def create_market_sell_order(self, exchange_id, symbol, amount):
+    def create_market_sell_order(self, exchange_id, symbol, amount, params=None):
         """
         Tạo lệnh bán thị trường.
         
@@ -242,6 +247,7 @@ class ExchangeService:
             exchange_id (str): ID của sàn giao dịch
             symbol (str): Ký hiệu của cặp giao dịch
             amount (float): Số lượng cần bán
+            params (dict, optional): Tham số bổ sung
         
         Returns:
             dict: Thông tin lệnh đã tạo
@@ -250,9 +256,10 @@ class ExchangeService:
             ExchangeError: Nếu có lỗi khi tạo lệnh
         """
         exchange = self.get_exchange(exchange_id)
+        params = params or {}
         
         try:
-            return exchange.create_market_sell_order(symbol, amount)
+            return exchange.create_market_sell_order(symbol, amount, params)
         except Exception as e:
             raise ExchangeError(exchange_id, f"Không thể tạo lệnh bán thị trường cho {symbol}: {str(e)}")
     
@@ -337,7 +344,7 @@ class ExchangeService:
         exchange = self.get_exchange(exchange_id)
         
         try:
-            if exchange.has['cancelAllOrders']:
+            if hasattr(exchange, 'cancel_all_orders'):
                 return exchange.cancel_all_orders(symbol)
             else:
                 # Nếu sàn không hỗ trợ hủy tất cả, hủy từng lệnh một
@@ -366,8 +373,12 @@ class ExchangeService:
         exchange = self.get_exchange(exchange_id)
         
         try:
-            symbol_info = exchange.load_markets()[symbol]
-            return symbol_info['limits']['price']['min']
+            markets = exchange.load_markets()
+            if symbol in markets:
+                symbol_info = markets[symbol]
+                if 'limits' in symbol_info and 'price' in symbol_info['limits'] and 'min' in symbol_info['limits']['price']:
+                    return symbol_info['limits']['price']['min']
+            return 0.001  # Giá trị mặc định
         except Exception as e:
             # Nếu không lấy được thông tin, trả về giá trị mặc định
             log_error(f"Không thể lấy giá trị tối thiểu cho {symbol} trên {exchange_id}: {str(e)}")
@@ -443,7 +454,8 @@ class ExchangeService:
             self.cancel_all_orders(exchange_id, symbol)
             
             # Lấy số dư và tính số lượng cần bán
-            balance = self.get_balance(exchange_id, symbol)
+            base_asset = extract_base_asset(symbol)
+            balance = self.get_balance(exchange_id, base_asset)
             balance_to_sell = balance - (balance * keep_percentage)
             
             # Kiểm tra số dư tối thiểu
@@ -453,7 +465,80 @@ class ExchangeService:
             if balance_to_sell > min_amount_in_base:
                 return self.create_market_sell_order(exchange_id, symbol, round(balance_to_sell, 4))
             else:
-                log_info(f"Không đủ {symbol.split('/')[0]} trên {exchange_id}.")
+                log_info(f"Không đủ {base_asset} trên {exchange_id}.")
                 return None
         except Exception as e:
             raise ExchangeError(exchange_id, f"Không thể thực hiện chuyển đổi khẩn cấp cho {symbol}: {str(e)}")
+    
+    def transfer_between_accounts(self, exchange_id, asset, amount, from_account, to_account):
+        """
+        Chuyển tiền giữa các tài khoản trên cùng một sàn giao dịch.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            asset (str): Ký hiệu của tài sản
+            amount (float): Số lượng cần chuyển
+            from_account (str): Tài khoản nguồn
+            to_account (str): Tài khoản đích
+            
+        Returns:
+            dict: Thông tin về giao dịch chuyển
+            
+        Raises:
+            ExchangeError: Nếu có lỗi khi chuyển tiền
+        """
+        exchange = self.get_exchange(exchange_id)
+        
+        try:
+            result = exchange.transfer(asset, amount, from_account, to_account)
+            log_info(f"Đã chuyển {amount} {asset} từ {from_account} sang {to_account} trên {exchange_id}")
+            return result
+        except Exception as e:
+            raise ExchangeError(exchange_id, f"Không thể chuyển tiền: {str(e)}")
+    
+    def create_futures_order(self, exchange_id, symbol, type, side, amount, params=None):
+        """
+        Tạo lệnh trên thị trường futures.
+        
+        Args:
+            exchange_id (str): ID của sàn giao dịch
+            symbol (str): Ký hiệu của cặp giao dịch
+            type (str): Loại lệnh (market, limit)
+            side (str): Hướng đặt lệnh (buy, sell)
+            amount (float): Số lượng
+            params (dict, optional): Tham số bổ sung
+            
+        Returns:
+            dict: Thông tin lệnh đã tạo
+            
+        Raises:
+            FuturesError: Nếu có lỗi khi tạo lệnh
+        """
+        exchange = self.get_exchange(exchange_id)
+        params = params or {}
+        
+        try:
+            # Đảm bảo symbol đúng định dạng cho futures
+            if not symbol.endswith(':USDT') and ':USDT' not in symbol:
+                symbol = f"{extract_base_asset(symbol)}:USDT"
+            
+            # Tạo lệnh futures
+            if type == 'market':
+                if side == 'buy':
+                    return exchange.create_market_buy_order(symbol, amount, params)
+                elif side == 'sell':
+                    return exchange.create_market_sell_order(symbol, amount, params)
+            elif type == 'limit':
+                price = params.pop('price', None)
+                if not price:
+                    raise FuturesError(exchange_id, "Giá bắt buộc phải có cho lệnh giới hạn")
+                
+                if side == 'buy':
+                    return exchange.create_limit_buy_order(symbol, amount, price, params)
+                elif side == 'sell':
+                    return exchange.create_limit_sell_order(symbol, amount, price, params)
+            
+            raise FuturesError(exchange_id, f"Loại lệnh không hợp lệ: {type}")
+            
+        except Exception as e:
+            raise FuturesError(exchange_id, f"Không thể tạo lệnh futures: {str(e)}")
