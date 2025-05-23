@@ -31,7 +31,7 @@ from bots.fake_money_bot import FakeMoneyBot
 # Import các module tiện ích
 from utils.logger import log_info, log_error, log_warning, logger
 from utils.helpers import show_time
-from config import PYTHON_COMMAND, ENABLE_TELEGRAM, BOT_MODES
+from configs import PYTHON_COMMAND, ENABLE_TELEGRAM, BOT_MODES
 
 
 def setup_logging(level=logging.INFO):

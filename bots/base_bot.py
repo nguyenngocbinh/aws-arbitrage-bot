@@ -12,7 +12,7 @@ from colorama import Fore, Style
 from utils.logger import log_info, log_error, log_warning, log_profit, log_opportunity
 from utils.exceptions import ArbitrageError, ExchangeError, InsufficientBalanceError, OrderError
 from utils.helpers import show_time, extract_base_asset
-from config import PROFIT_CRITERIA_PCT, PROFIT_CRITERIA_USD, ENABLE_CTRL_C_HANDLING
+from configs import PROFIT_CRITERIA_PCT, PROFIT_CRITERIA_USD, ENABLE_CTRL_C_HANDLING
 
 
 class BaseBot:
