@@ -13,22 +13,28 @@ aws-arbitrage-bot/
 ├── .env                    # Biến môi trường: API keys, chat ID
 ├── configs.py              # Cấu hình chung: đường dẫn, pairs, sàn
 ├── main.py                 # Điểm chạy chính (entry point)
+├── requirements.txt        # Danh sách thư viện cần cài
 │
 ├── bots/
-│   ├── __init__.py         # Để Python coi là module
-│   ├── arbitrage\bots.py   # Bot chính: fetch price, detect spread, notify, log
+│   ├── __init__.py
+│   ├── base_bot.py        # Bot base class với các hàm chung
+│   ├── classic_bot.py     # Bot giao dịch classic arbitrage
+│   ├── delta_neutral_bot.py # Bot giao dịch delta neutral
+│   └── fake_money_bot.py  # Bot test với tiền ảo
 │
-├── src/
-│   ├── __init__.py         # Để Python coi là module
-│   ├── exchanges.py        # Wrapper API ccxt và async price fetch
-│   ├── database.py         # Hàm SQLite: init, insert, query
-│   ├── notifier.py         # Gửi cảnh báo qua Telegram (hoặc email)
+├── services/
+│   ├── __init__.py
+│   ├── balance_service.py  # Quản lý số dư tài khoản
+│   ├── exchange_service.py # Tương tác với sàn giao dịch
+│   ├── notification_service.py # Gửi thông báo
+│   └── order_service.py    # Quản lý lệnh giao dịch
 │
-├── utils/
-│   ├── __init__.py         # Để Python coi là module
-│   └── helpers.py          # Hàm phụ trợ: format price, timestamp,...
-│
-└── requirements.txt        # Danh sách thư viện cần cài
+└── utils/
+    ├── __init__.py
+    ├── env_loader.py      # Load biến môi trường
+    ├── exceptions.py      # Custom exceptions
+    ├── helpers.py         # Các hàm tiện ích
+    └── logger.py          # Logging configuration
 
 ````
 
@@ -68,43 +74,68 @@ CHAT_ID=your_chat_id
 Chạy bot với lệnh sau:
 
 ```bash
-python main.py --mode live --balance 1000 --exchanges binance kraken --symbol BTC/USDT
+python main.py classic 15 1000 binance kucoin okx BTC/USDT
 ```
 
-Hoặc nếu chỉ muốn chạy ở chế độ kiểm tra:
+Hoặc nếu muốn test với tiền ảo:
 
 ```bash
-python main.py --mode test --balance 1000 --exchanges binance kraken
+python main.py fake-money 15 1000 binance kucoin okx
+```
+
+Các đối số:
+1. mode: Chế độ bot (fake-money/classic/delta-neutral)
+2. renew_time: Thời gian làm mới (phút)
+3. usdt_amount: Số lượng USDT để giao dịch
+4. exchange1: Sàn giao dịch thứ nhất
+5. exchange2: Sàn giao dịch thứ hai
+6. exchange3: Sàn giao dịch thứ ba
+7. symbol: (tùy chọn) Cặp tiền giao dịch (VD: BTC/USDT)
 ```
 
 ## 📈 Tính năng
 
-1. **Phát hiện chênh lệch giá**: Bot sẽ kiểm tra giá của một cặp coin (ví dụ: BTC/USDT) trên nhiều sàn giao dịch và tính toán chênh lệch (spread).
-2. **Gửi cảnh báo**: Nếu chênh lệch giá vượt qua ngưỡng được cấu hình, bot sẽ gửi cảnh báo qua Telegram.
-3. **Ghi log vào SQLite**: Các cơ hội arbitrage sẽ được lưu vào cơ sở dữ liệu SQLite để truy xuất và phân tích sau này.
-4. **Hỗ trợ nhiều sàn**: Dễ dàng cấu hình thêm các sàn giao dịch và cặp giao dịch trong file `configs.py`.
+1. **Ba chế độ giao dịch**:
+   - **Classic**: Giao dịch arbitrage truyền thống giữa các sàn
+   - **Delta Neutral**: Giao dịch với chiến lược cân bằng delta
+   - **Fake Money**: Chế độ test với tiền ảo để kiểm thử chiến lược
+
+2. **Quản lý giao dịch thông minh**:
+   - Tự động kiểm tra chênh lệch giá giữa các sàn
+   - Đặt lệnh với precision phù hợp cho từng sàn
+   - Theo dõi trạng thái lệnh và số dư theo thời gian thực
+
+3. **Tính năng an toàn**:
+   - Kiểm tra số dư trước khi giao dịch
+   - Hủy lệnh tự động nếu không khớp sau thời gian chờ
+   - Cơ chế retry cho các API calls thất bại
+
+4. **Thông báo và theo dõi**:
+   - Gửi cảnh báo qua Telegram khi có cơ hội giao dịch
+   - Log đầy đủ thông tin để debug và phân tích
 
 ## 🔧 Cấu trúc mã nguồn
 
-### **`bots/arbitrage_bot.py`**:
+### **`bots/`**:
 
-* Đây là nơi xử lý chính của bot. Nó lấy giá từ các sàn giao dịch, tính toán chênh lệch và gửi cảnh báo.
+* `base_bot.py`: Bot base class với các phương thức chung
+* `classic_bot.py`: Triển khai bot giao dịch arbitrage truyền thống
+* `delta_neutral_bot.py`: Bot giao dịch với chiến lược delta neutral
+* `fake_money_bot.py`: Bot test với tiền ảo để kiểm thử chiến lược
 
-### **`src/exchanges.py`**:
+### **`services/`**:
 
-* Wrapper cho các API của các sàn giao dịch sử dụng thư viện `ccxt`. Bot sử dụng `asyncio` để lấy giá bất đồng bộ từ các sàn.
+* `balance_service.py`: Quản lý số dư tài khoản trên các sàn
+* `exchange_service.py`: Tương tác với API của các sàn giao dịch
+* `notification_service.py`: Gửi thông báo qua Telegram
+* `order_service.py`: Quản lý việc đặt và theo dõi lệnh
 
-### **`src/database.py`**:
+### **`utils/`**:
 
-* Chứa các hàm để kết nối và ghi log vào cơ sở dữ liệu SQLite.
-
-### **`src/notifier.py`**:
-
-* Gửi cảnh báo qua Telegram khi phát hiện cơ hội arbitrage.
-
-### **`utils/helpers.py`**:
-
-* Các hàm phụ trợ như `format_usd` (định dạng tiền tệ) và `now_utc_str` (lấy thời gian UTC hiện tại).
+* `env_loader.py`: Load và validate các biến môi trường
+* `exceptions.py`: Custom exceptions cho các tình huống lỗi
+* `helpers.py`: Các hàm tiện ích dùng chung
+* `logger.py`: Cấu hình logging cho toàn bộ ứng dụng
 
 ## ⚙️ Cấu hình và mở rộng
 

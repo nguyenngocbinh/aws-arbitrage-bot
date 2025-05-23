@@ -6,7 +6,7 @@ import time
 from utils.logger import log_info, log_error, log_warning
 from utils.exceptions import InsufficientBalanceError
 from utils.helpers import read_file_content, update_balance_file, extract_base_asset
-from config import START_BALANCE_FILE, BALANCE_FILE
+from configs import START_BALANCE_FILE, BALANCE_FILE
 
 
 class BalanceService:
