@@ -11,7 +11,7 @@ from utils.logger import log_info, log_error, log_warning, log_debug
 from utils.exceptions import ArbitrageError, ExchangeError, InsufficientBalanceError, OrderError
 from utils.helpers import calculate_average
 from bots.base_bot import BaseBot
-from config import EXCHANGE_FEES
+from configs import EXCHANGE_FEES
 
 
 class ClassicBot(BaseBot):
