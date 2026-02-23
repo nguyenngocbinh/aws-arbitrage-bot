@@ -118,20 +118,19 @@ def get_user_input():
     
     # Danh sách các thông tin cần nhập
     input_list = [
-        "mode (fake-money, classic, delta-neutral)",
-        "renew time (in minutes)",
-        "balance to use (USDT)",
-        "exchange 1",
-        "exchange 2",
-        "exchange 3",
-        "crypto pair (để trống để tìm tự động)"
+        ("mode", "mode (fake-money, classic, delta-neutral)"),
+        ("renew", "renew time (in minutes)"),
+        ("balance", "balance to use (USDT)"),
+        ("exchange_1", "exchange 1"),
+        ("exchange_2", "exchange 2"),
+        ("exchange_3", "exchange 3"),
+        ("crypto", "crypto pair (để trống để tìm tự động)")
     ]
     
     print(f"{Fore.YELLOW}Nhập thông tin cấu hình:{Style.RESET_ALL}")
     # Lấy thông tin từ người dùng
-    for prompt in input_list:
+    for key, prompt in input_list:
         user_input = input(f"{Fore.CYAN}{prompt}{Style.RESET_ALL} >>> ")
-        key = prompt.split(" ")[0]
         inputs[key] = user_input
     
     print()  # Dòng trống cho đẹp
@@ -331,7 +330,7 @@ async def main():
             mode = inputs["mode"]
             renew_time = int(inputs["renew"])
             usdt_amount = float(inputs["balance"])
-            exchanges = [inputs["exchange"], inputs["exchange"], inputs["exchange"]]
+            exchanges = [inputs["exchange_1"], inputs["exchange_2"], inputs["exchange_3"]]
             symbol = inputs["crypto"] if inputs["crypto"] else None
             dry_run = False  # Mặc định không phải dry run khi nhập thủ công
         

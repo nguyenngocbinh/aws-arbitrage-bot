@@ -259,6 +259,9 @@ class BaseBot:
         # Tính toán lợi nhuận tiềm năng
         total_usd_amount = sum(self.usd.values())
         
+        if total_usd_amount <= 0:
+            return False
+        
         # Tính lợi nhuận trước phí
         crypto_amount = self.crypto_per_transaction
         profit_usd = crypto_amount * (self.max_bid_price - self.min_ask_price)

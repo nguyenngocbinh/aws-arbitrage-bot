@@ -9,6 +9,7 @@ build/
 .env.*
 *.sqlite3
 *.db
+.pytest_cache/
 
 # VSCode or IDE
 .vscode/
