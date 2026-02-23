@@ -57,7 +57,7 @@ class OrderService:
         log_info("Tất cả các lệnh đã được gửi.")
         
         # Đợi cho đến khi tất cả các lệnh được điền hoặc hết thời gian chờ
-        timeout_seconds = FIRST_ORDERS_FILL_TIMEOUT * 60 * 0.5  # Thời gian chờ tối đa
+        timeout_seconds = FIRST_ORDERS_FILL_TIMEOUT  # Thời gian chờ tối đa (giây)
         start_time = time.time()
         
         while time.time() - start_time <= timeout_seconds and orders_filled != len(exchanges):
@@ -85,7 +85,7 @@ class OrderService:
         
         # Kiểm tra nếu có lệnh nào chưa được điền sau khi hết thời gian chờ
         if time.time() - start_time >= timeout_seconds and orders_filled != len(exchanges):
-            message = f"Một hoặc nhiều lệnh không được điền trong khoảng {FIRST_ORDERS_FILL_TIMEOUT} phút. Hủy các lệnh và bán số lượng đã điền."
+            message = f"Một hoặc nhiều lệnh không được điền trong khoảng {FIRST_ORDERS_FILL_TIMEOUT // 60} phút. Hủy các lệnh và bán số lượng đã điền."
             log_warning(message)
             
             if notification_service:
